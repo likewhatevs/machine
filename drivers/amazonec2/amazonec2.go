@@ -637,36 +637,50 @@ func (d *Driver) innerCreate() error {
 
 	var instance *ec2.Instance
 
+	spot := "spot"
+	blockDurationMinutes := &d.BlockDurationMinutes
+
+	if d.BlockDurationMinutes == 0 {
+		blockDurationMinutes = nil
+	}
+
+
 	if d.RequestSpotInstance {
-		req := ec2.RequestSpotInstancesInput{
-			LaunchSpecification: &ec2.RequestSpotLaunchSpecification{
-				ImageId: &d.AMI,
-				Placement: &ec2.SpotPlacement{
-					AvailabilityZone: &regionZone,
-				},
-				KeyName:           &d.KeyName,
-				InstanceType:      &d.InstanceType,
-				NetworkInterfaces: netSpecs,
-				Monitoring:        &ec2.RunInstancesMonitoringEnabled{Enabled: aws.Bool(d.Monitoring)},
-				IamInstanceProfile: &ec2.IamInstanceProfileSpecification{
-					Name: &d.IamInstanceProfile,
-				},
-				EbsOptimized:        &d.UseEbsOptimizedInstance,
-				BlockDeviceMappings: []*ec2.BlockDeviceMapping{bdm},
-				UserData:            &userdata,
+		inst, err := d.getClient().RunInstances(&ec2.RunInstancesInput{
+			ImageId:  &d.AMI,
+			MinCount: aws.Int64(1),
+			MaxCount: aws.Int64(1),
+			Placement: &ec2.Placement{
+				AvailabilityZone: &regionZone,
 			},
-			InstanceCount: aws.Int64(1),
-			SpotPrice:     &d.SpotPrice,
-		}
-		if d.BlockDurationMinutes != 0 {
-			req.BlockDurationMinutes = &d.BlockDurationMinutes
+			KeyName:           &d.KeyName,
+			InstanceType:      &d.InstanceType,
+			NetworkInterfaces: netSpecs,
+			Monitoring:        &ec2.RunInstancesMonitoringEnabled{Enabled: aws.Bool(d.Monitoring)},
+			IamInstanceProfile: &ec2.IamInstanceProfileSpecification{
+				Name: &d.IamInstanceProfile,
+			},
+			EbsOptimized:        &d.UseEbsOptimizedInstance,
+			BlockDeviceMappings: []*ec2.BlockDeviceMapping{bdm},
+			UserData:            &userdata,
+			InstanceMarketOptions: &ec2.InstanceMarketOptionsRequest{
+				MarketType:  &spot,
+				SpotOptions: &ec2.SpotMarketOptions{
+					BlockDurationMinutes:         blockDurationMinutes,
+					InstanceInterruptionBehavior: nil,
+					MaxPrice:                     nil,
+					SpotInstanceType:             nil,
+					ValidUntil:                   nil,
+				},
+			},
+			TagSpecifications: d.configureTags(d.Tags),
+		})
+
+		if err != nil {
+			return fmt.Errorf("Error launching instance: %s", err)
 		}
 
-		spotInstanceRequest, err := d.getClient().RequestSpotInstances(&req)
-		if err != nil {
-			return fmt.Errorf("Error request spot instance: %s", err)
-		}
-		d.spotInstanceRequestId = *spotInstanceRequest.SpotInstanceRequests[0].SpotInstanceRequestId
+		d.spotInstanceRequestId = *inst.Instances[0].SpotInstanceRequestId
 
 		log.Info("Waiting for spot instance...")
 		for i := 0; i < 3; i++ {
@@ -737,6 +751,7 @@ func (d *Driver) innerCreate() error {
 			EbsOptimized:        &d.UseEbsOptimizedInstance,
 			BlockDeviceMappings: []*ec2.BlockDeviceMapping{bdm},
 			UserData:            &userdata,
+			TagSpecifications: d.configureTags(d.Tags),
 		})
 
 		if err != nil {
@@ -764,12 +779,12 @@ func (d *Driver) innerCreate() error {
 		d.PrivateIPAddress,
 	)
 
-	log.Debug("Settings tags for instance")
-	err := d.configureTags(d.Tags)
-
-	if err != nil {
-		return fmt.Errorf("Unable to tag instance %s: %s", d.InstanceId, err)
-	}
+	//log.Debug("Settings tags for instance")
+	//err := d.configureTags(d.Tags)
+	//
+	//if err != nil {
+	//	return fmt.Errorf("Unable to tag instance %s: %s", d.InstanceId, err)
+	//}
 
 	return nil
 }
@@ -1050,7 +1065,7 @@ func (d *Driver) securityGroupAvailableFunc(id string) func() bool {
 	}
 }
 
-func (d *Driver) configureTags(tagGroups string) error {
+func (d *Driver) configureTags(tagGroups string) []*ec2.TagSpecification {
 
 	tags := []*ec2.Tag{}
 	tags = append(tags, &ec2.Tag{
@@ -1071,16 +1086,15 @@ func (d *Driver) configureTags(tagGroups string) error {
 		}
 	}
 
-	_, err := d.getClient().CreateTags(&ec2.CreateTagsInput{
-		Resources: []*string{&d.InstanceId},
-		Tags:      tags,
+	instance := "instance"
+
+	tagSpecification := []*ec2.TagSpecification{}
+	tagSpecification = append(tagSpecification, &ec2.TagSpecification{
+		ResourceType: &instance,
+		Tags:         tags,
 	})
 
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return tagSpecification
 }
 
 func (d *Driver) configureSecurityGroups(groupNames []string) error {
