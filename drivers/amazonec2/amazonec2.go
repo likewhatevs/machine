@@ -600,7 +600,7 @@ func (d *Driver) Create() error {
 }
 
 func (d *Driver) innerCreate() error {
-	log.Infof("Launching instance...")
+	log.Infof("Launching pretagged instance...")
 
 	if err := d.createKeyPair(); err != nil {
 		return fmt.Errorf("unable to create key pair: %s", err)
@@ -646,7 +646,7 @@ func (d *Driver) innerCreate() error {
 
 
 	if d.RequestSpotInstance {
-		inst, err := d.getClient().RunInstances(&ec2.RunInstancesInput{
+		instReq := &ec2.RunInstancesInput{
 			ImageId:  &d.AMI,
 			MinCount: aws.Int64(1),
 			MaxCount: aws.Int64(1),
@@ -656,10 +656,10 @@ func (d *Driver) innerCreate() error {
 			KeyName:           &d.KeyName,
 			InstanceType:      &d.InstanceType,
 			NetworkInterfaces: netSpecs,
-			Monitoring:        &ec2.RunInstancesMonitoringEnabled{Enabled: aws.Bool(d.Monitoring)},
-			IamInstanceProfile: &ec2.IamInstanceProfileSpecification{
-				Name: &d.IamInstanceProfile,
-			},
+			//Monitoring:        &ec2.RunInstancesMonitoringEnabled{Enabled: aws.Bool(d.Monitoring)},
+			//IamInstanceProfile: &ec2.IamInstanceProfileSpecification{
+			//	Name: &d.IamInstanceProfile,
+			//},
 			EbsOptimized:        &d.UseEbsOptimizedInstance,
 			BlockDeviceMappings: []*ec2.BlockDeviceMapping{bdm},
 			UserData:            &userdata,
@@ -674,7 +674,11 @@ func (d *Driver) innerCreate() error {
 				},
 			},
 			TagSpecifications: d.configureTags(d.Tags),
-		})
+		}
+
+		fmt.Print(instReq)
+
+		inst, err := d.getClient().RunInstances(instReq)
 
 		if err != nil {
 			return fmt.Errorf("Error launching instance: %s", err)
@@ -734,7 +738,7 @@ func (d *Driver) innerCreate() error {
 			return fmt.Errorf("Error resolving spot instance to real instance: %v", err)
 		}
 	} else {
-		inst, err := d.getClient().RunInstances(&ec2.RunInstancesInput{
+		instReq := &ec2.RunInstancesInput{
 			ImageId:  &d.AMI,
 			MinCount: aws.Int64(1),
 			MaxCount: aws.Int64(1),
@@ -744,15 +748,19 @@ func (d *Driver) innerCreate() error {
 			KeyName:           &d.KeyName,
 			InstanceType:      &d.InstanceType,
 			NetworkInterfaces: netSpecs,
-			Monitoring:        &ec2.RunInstancesMonitoringEnabled{Enabled: aws.Bool(d.Monitoring)},
-			IamInstanceProfile: &ec2.IamInstanceProfileSpecification{
-				Name: &d.IamInstanceProfile,
-			},
-			EbsOptimized:        &d.UseEbsOptimizedInstance,
+			//Monitoring:        &ec2.RunInstancesMonitoringEnabled{Enabled: aws.Bool(d.Monitoring)},
+			//IamInstanceProfile: &ec2.IamInstanceProfileSpecification{
+			//	Name: &d.IamInstanceProfile,
+			//},
+			//EbsOptimized:        &d.UseEbsOptimizedInstance,
 			BlockDeviceMappings: []*ec2.BlockDeviceMapping{bdm},
 			UserData:            &userdata,
 			TagSpecifications: d.configureTags(d.Tags),
-		})
+		}
+
+		fmt.Print(instReq)
+
+		inst, err := d.getClient().RunInstances(instReq)
 
 		if err != nil {
 			return fmt.Errorf("Error launching instance: %s", err)
