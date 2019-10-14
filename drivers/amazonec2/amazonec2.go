@@ -122,6 +122,11 @@ type clientFactory interface {
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 	return []mcnflag.Flag{
 		mcnflag.StringFlag{
+			Name:   "amazonec2-security-group-id",
+			Usage:  "AWS Security Group ID",
+			EnvVar: "AWS_SECURITY_GROUP_ID",
+		},
+		mcnflag.StringFlag{
 			Name:   "amazonec2-access-key",
 			Usage:  "AWS Access Key",
 			EnvVar: "AWS_ACCESS_KEY_ID",
@@ -362,6 +367,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.VpcId = flags.String("amazonec2-vpc-id")
 	d.SubnetId = flags.String("amazonec2-subnet-id")
 	d.SecurityGroupNames = flags.StringSlice("amazonec2-security-group")
+	d.SecurityGroupId = flags.String("amazonec2-security-group-id")
 	d.SecurityGroupReadOnly = flags.Bool("amazonec2-security-group-readonly")
 	d.Tags = flags.String("amazonec2-tags")
 	zone := flags.String("amazonec2-zone")
@@ -602,13 +608,17 @@ func (d *Driver) Create() error {
 func (d *Driver) innerCreate() error {
 	log.Infof("Launching pretagged instance...")
 
+	log.Infof("Doing keypair stuff.")
 	if err := d.createKeyPair(); err != nil {
 		return fmt.Errorf("unable to create key pair: %s", err)
 	}
+	log.Infof("Done keypair stuff.")
 
-	if err := d.configureSecurityGroups(d.securityGroupNames()); err != nil {
-		return err
-	}
+	log.Infof("Not doing SG stuff.")
+	//if err := d.configureSecurityGroups(d.securityGroupNames()); err != nil {
+	//	return err
+	//}
+	log.Infof("Done not doing SG Stuff.")
 
 	var userdata string
 	if b64, err := d.Base64UserData(); err != nil {
@@ -625,6 +635,8 @@ func (d *Driver) innerCreate() error {
 			DeleteOnTermination: aws.Bool(true),
 		},
 	}
+
+	fmt.Printf("doing network stuff")
 	netSpecs := []*ec2.InstanceNetworkInterfaceSpecification{{
 		DeviceIndex:              aws.Int64(0), // eth0
 		Groups:                   makePointerSlice(d.securityGroupIds()),
@@ -633,7 +645,7 @@ func (d *Driver) innerCreate() error {
 	}}
 
 	regionZone := d.getRegionZone()
-	log.Debugf("launching instance in subnet %s", d.SubnetId)
+	fmt.Printf("launching instance in subnet %s", d.SubnetId)
 
 	var instance *ec2.Instance
 
@@ -644,6 +656,7 @@ func (d *Driver) innerCreate() error {
 		blockDurationMinutes = nil
 	}
 
+	fmt.Printf("launching instance in subnet")
 
 	if d.RequestSpotInstance {
 		instReq := &ec2.RunInstancesInput{
@@ -675,6 +688,8 @@ func (d *Driver) innerCreate() error {
 			},
 			TagSpecifications: d.configureTags(d.Tags),
 		}
+
+		fmt.Printf("launching instance in subnet")
 
 		fmt.Print(instReq)
 
